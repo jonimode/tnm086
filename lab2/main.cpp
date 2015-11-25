@@ -6,7 +6,7 @@
 #include <osg/MatrixTransform>
 
 #include <osg/ComputeBoundsVisitor>
-
+#include <osg/Material>
 #include <glm/gtx/matrix_interpolation.hpp>
 
 sgct::Engine * gEngine;
@@ -21,7 +21,9 @@ osg::ref_ptr<osg::Group> mRootNode;
 osg::ref_ptr<osg::MatrixTransform> mSceneTrans;
 osg::ref_ptr<osg::FrameStamp> mFrameStamp; //to sync osg animations across cluster
 osg::ref_ptr<osg::Geometry> linesGeom;
-
+osg::ref_ptr<osgUtil::LineSegmentIntersector> wandLine;
+osg::ref_ptr<osg::Node> mCessnaModel;
+osg::ref_ptr<osg::Node> mModel;
 
 //-----------------------
 // function declarations
@@ -183,6 +185,8 @@ void myPostSyncPreDrawFun(){
     vertices->push_back(wand_start);
     vertices->push_back(wand_end);
     linesGeom->setVertexArray(vertices);
+    wandLine->setStart(wand_start);
+    wandLine->setEnd(wand_end);
   }
 
   //traverse if there are any tasks to do
@@ -194,6 +198,25 @@ void myPostSyncPreDrawFun(){
 }
 
 void calculateIntersections() {
+  osgUtil::IntersectionVisitor visitor;
+  visitor.setIntersector(wandLine);
+  mRootNode->accept(visitor);
+
+  if(wandLine->containsIntersections()) {
+    osgUtil::LineSegmentIntersector::Intersection intersectionInfo = wandLine->getFirstIntersection();
+    osg::NodePath nodePath = intersectionInfo.nodePath;
+
+    osg::ref_ptr<osg::Node> intersectedNode;
+
+    for (osg::NodePath::iterator it = nodePath.begin() ; it != nodePath.end(); ++it) {
+      if((*it) == mCessnaModel || (*it) == mModel) {
+        intersectedNode = (*it);
+      }
+    }
+
+    intersectedNode->getParent(0)->asTransform()->asMatrixTransform()->postMult(osg::Matrix::scale( 1.1, 1.1, 1.1 ));
+  }
+  wandLine->reset();
 }
 
 void myDrawFun() {
@@ -266,6 +289,8 @@ void initOSG(){
 
   mViewer->getCamera()->setGraphicsContext(graphicsWindow.get());
 
+  wandLine = new osgUtil::LineSegmentIntersector(wand_start, wand_end);
+
   //SGCT will handle the near and far planes
   mViewer->getCamera()->setComputeNearFarMode(osgUtil::CullVisitor::DO_NOT_COMPUTE_NEAR_FAR);
   mViewer->getCamera()->setClearColor( osg::Vec4( 0.0f, 0.0f, 0.0f, 0.0f) );
@@ -306,8 +331,6 @@ void createOSGScene(){
 
   mRootNode->addChild(createWand());
 
-  osg::ref_ptr<osg::Node>            mModel;
-  osg::ref_ptr<osg::Node>            mCessnaModel;
   osg::ref_ptr<osg::MatrixTransform> mModelTrans;
   osg::ref_ptr<osg::MatrixTransform> mCessnaTrans;
 
