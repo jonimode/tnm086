@@ -214,7 +214,21 @@ void calculateIntersections() {
       }
     }
 
-    intersectedNode->getParent(0)->asTransform()->asMatrixTransform()->postMult(osg::Matrix::scale( 1.1, 1.1, 1.1 ));
+    osg::ref_ptr<osg::Material> mat = (osg::Material*)intersectedNode->getOrCreateStateSet()->getAttribute(osg::StateAttribute::MATERIAL);
+
+    if(!mat) {
+      mat = new osg::Material();
+      sgct::MessageHandler::instance()->print("No Material!\n");
+    }
+    mat->setAmbient (osg::Material::FRONT_AND_BACK, osg::Vec4(1, 0, 0, 1.0));
+    intersectedNode->getOrCreateStateSet()->setAttributeAndModes(mat.get(), osg::StateAttribute::OVERRIDE);
+  }
+  else {
+    osg::ref_ptr<osg::Material> mat = (osg::Material*)mCessnaModel->getOrCreateStateSet()->getAttribute(osg::StateAttribute::MATERIAL);
+    if(!mat)
+      mat = new osg::Material();
+    mat->setAmbient (osg::Material::FRONT_AND_BACK, osg::Vec4(0, 1, 0, 1.0));
+    mCessnaModel->getOrCreateStateSet()->setAttributeAndModes(mat.get(), osg::StateAttribute::OVERRIDE);
   }
   wandLine->reset();
 }
