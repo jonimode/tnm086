@@ -43,13 +43,14 @@ void createOSGScene();
 void setupLightSource();
 void calculateIntersections();
 
-osg::Vec3d wand_start;
-osg::Vec3d wand_end;
+osg::Vec3d wand_start(0,-1,0);
+osg::Vec3d wand_end(0,0,0);
 glm::mat4 wand_matrix;
 
 //store each device's transform 4x4 matrix in a shared vector
 sgct::SharedDouble curr_time(0.0);
 sgct::SharedVector<glm::mat4> sharedTransforms;
+sgct::SharedVector<bool> sharedButton;
 sgct::SharedString sharedText;
 
 int main( int argc, char* argv[] ){
@@ -65,7 +66,7 @@ int main( int argc, char* argv[] ){
 	gEngine->setKeyboardCallbackFunction( keyCallback );
 
   // Init the engine
-  if( !gEngine->init() ){
+  if(!gEngine->init()){
     delete gEngine;
     return EXIT_FAILURE;
   }
@@ -101,6 +102,11 @@ void myInitOGLFun(){
 
       if( devicePtr->hasSensor() ){
         sharedTransforms.addVal( glm::mat4(1.0f) );
+      }
+      if( devicePtr->hasButtons() ){
+        for( int idx = 0 ; idx < devicePtr->getNumberOfButtons() ; ++idx ){
+          sharedButton.addVal(0);
+        }
       }
     }
   }
@@ -141,6 +147,8 @@ void myPreSyncFun(){
         message << "Buttons:" << std::endl << "  ";
         for( int idx = 0 ; idx < devicePtr->getNumberOfButtons() ; ++idx ){
           message << devicePtr->getButton(idx) ? "1" : "0";
+          sharedButton.setValAt(idx, devicePtr->getButton(idx));
+
         }
         message << std::endl;
       }
@@ -167,7 +175,12 @@ void myPostSyncPreDrawFun(){
   mFrameStamp->setSimulationTime( curr_time.getVal() );
   mViewer->setFrameStamp( mFrameStamp.get() );
   mViewer->advance( curr_time.getVal() ); //update
+  //Update position if button is pressed
+  if(sharedButton.getSize()) {
+    if(sharedButton.getValAt(0)) {
 
+    }
+  }
   // Draw wand in OSG
   if( sharedTransforms.getSize() > WAND_SENSOR_IDX ){
     wand_matrix = sharedTransforms.getValAt(WAND_SENSOR_IDX);
@@ -188,7 +201,14 @@ void myPostSyncPreDrawFun(){
     wandLine->setStart(wand_start);
     wandLine->setEnd(wand_end);
   }
-
+  else {
+    osg::Vec3Array* vertices = new osg::Vec3Array();
+    vertices->push_back(wand_start);
+    vertices->push_back(wand_end);
+    linesGeom->setVertexArray(vertices);
+    wandLine->setStart(wand_start);
+    wandLine->setEnd(wand_end);
+  }
   //traverse if there are any tasks to do
   if (!mViewer->done()){
     mViewer->eventTraversal();
@@ -220,15 +240,13 @@ void calculateIntersections() {
       mat = new osg::Material();
       sgct::MessageHandler::instance()->print("No Material!\n");
     }
-    mat->setAmbient (osg::Material::FRONT_AND_BACK, osg::Vec4(1, 0, 0, 1.0));
+    mat->setAmbient (osg::Material::FRONT_AND_BACK, osg::Vec4(1, 1, 0, 1.0));
+    mat->setDiffuse (osg::Material::FRONT_AND_BACK, osg::Vec4(1, 1, 0, 1.0));
     intersectedNode->getOrCreateStateSet()->setAttributeAndModes(mat.get(), osg::StateAttribute::OVERRIDE);
   }
   else {
-    osg::ref_ptr<osg::Material> mat = (osg::Material*)mCessnaModel->getOrCreateStateSet()->getAttribute(osg::StateAttribute::MATERIAL);
-    if(!mat)
-      mat = new osg::Material();
-    mat->setAmbient (osg::Material::FRONT_AND_BACK, osg::Vec4(0, 1, 0, 1.0));
-    mCessnaModel->getOrCreateStateSet()->setAttributeAndModes(mat.get(), osg::StateAttribute::OVERRIDE);
+    mModel->getOrCreateStateSet()->removeAttribute(osg::StateAttribute::MATERIAL);
+    mCessnaModel->getOrCreateStateSet()->removeAttribute(osg::StateAttribute::MATERIAL);
   }
   wandLine->reset();
 }
@@ -278,6 +296,30 @@ void keyCallback(int key, int action) {
   case SGCT_KEY_ESC:
     gEngine->terminate();
     break;
+  case SGCT_KEY_W:
+    wand_start.y() += 1*gEngine->getDt();
+    wand_end.y() += 1*gEngine->getDt();
+    break;
+  case SGCT_KEY_S:
+    wand_start.y() -= 1*gEngine->getDt();
+    wand_end.y() -= 1*gEngine->getDt();
+    break;
+  case SGCT_KEY_A:
+    wand_start.x() -= 1*gEngine->getDt();
+    wand_end.x() -= 1*gEngine->getDt();
+    break;
+  case SGCT_KEY_D:
+    wand_start.x() += 1*gEngine->getDt();
+    wand_end.x() += 1*gEngine->getDt();
+    break;
+  case SGCT_KEY_Z:
+    wand_start.z() += 1*gEngine->getDt();
+    wand_end.z() += 1*gEngine->getDt();
+    break;
+  case SGCT_KEY_X:
+    wand_start.z() -= 1*gEngine->getDt();
+    wand_end.z() -= 1*gEngine->getDt();
+    break;
   }
 }
 
@@ -312,6 +354,9 @@ void initOSG(){
   //disable osg from clearing the buffers that will be done by SGCT
   GLbitfield tmpMask = mViewer->getCamera()->getClearMask();
   mViewer->getCamera()->setClearMask(tmpMask & (~(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)));
+
+  wandLine->setStart(wand_start);
+  wandLine->setEnd(wand_end);
 
   mViewer->setSceneData(mRootNode.get());
 }
