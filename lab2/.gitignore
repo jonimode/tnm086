@@ -1,0 +1,9 @@
+*.osg
+*.ive
+CMakeFiles/
+*.pyc
+*.py
+CMakeCache.txt
+Makefile
+*.cmake
+
