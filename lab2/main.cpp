@@ -46,7 +46,8 @@ void calculateIntersections();
 osg::Vec3d wand_start(0,-1,0);
 osg::Vec3d wand_end(0,0,0);
 glm::mat4 wand_matrix;
-
+glm::mat4 head_matrix;
+bool selecting;
 //store each device's transform 4x4 matrix in a shared vector
 sgct::SharedDouble curr_time(0.0);
 sgct::SharedVector<glm::mat4> sharedTransforms;
@@ -90,7 +91,7 @@ void myInitOGLFun(){
   setupLightSource();
 
   glEnable(GL_DEPTH_TEST);
-
+  selecting = false;
   //only store the tracking data on the master node
   if( !gEngine->isMaster() ) return;
 
@@ -159,7 +160,6 @@ void myPreSyncFun(){
           message << "  " << devicePtr->getAnalog(idx) << std::endl;
         }
       }
-
       message << std::endl;
     }
   }
@@ -175,10 +175,25 @@ void myPostSyncPreDrawFun(){
   mFrameStamp->setSimulationTime( curr_time.getVal() );
   mViewer->setFrameStamp( mFrameStamp.get() );
   mViewer->advance( curr_time.getVal() ); //update
+
+  bool gaze = false;
+  bool crosshair = false;
   //Update position if button is pressed
   if(sharedButton.getSize()) {
     if(sharedButton.getValAt(0)) {
-
+       //gaze mode
+       gaze = true;
+    }
+    else if(sharedButton.getValAt(1)) {
+       //crosshair mode
+       crosshair = true;
+    }
+    else if(sharedButton.getValAt(1)) {
+      //Selection of model
+      selecting = true;
+    }
+    else {
+      selecting = false;
     }
   }
   // Draw wand in OSG
@@ -202,12 +217,27 @@ void myPostSyncPreDrawFun(){
     wandLine->setEnd(wand_end);
   }
   else {
+    //Debug drawing
     osg::Vec3Array* vertices = new osg::Vec3Array();
     vertices->push_back(wand_start);
     vertices->push_back(wand_end);
     linesGeom->setVertexArray(vertices);
     wandLine->setStart(wand_start);
     wandLine->setEnd(wand_end);
+  }
+  if( sharedTransforms.getSize() > HEAD_SENSOR_IDX) {
+    head_matrix = sharedTransforms.getValAt(HEAD_SENSOR_IDX);
+    glm::vec3 head_position = glm::vec3(head_matrix*glm::vec4(0,0,0,1));
+    if(gaze) {
+      glm::vec3 newPosition = head_position + glm::mat3(head_matrix) * glm::vec3(0,0,-1);
+      mSceneTrans->postMult(osg::Matrix::translate(
+            -osg::Vec3(newPosition.x, newPosition.y, newPosition.z)));
+    }
+    else if (crosshair) {
+      glm::vec3 newPosition = head_position;//-wand_position;
+      mSceneTrans->postMult(osg::Matrix::translate(
+            -osg::Vec3(newPosition.x, newPosition.y, newPosition.z)));
+    }
   }
   //traverse if there are any tasks to do
   if (!mViewer->done()){
@@ -240,8 +270,14 @@ void calculateIntersections() {
       mat = new osg::Material();
       sgct::MessageHandler::instance()->print("No Material!\n");
     }
-    mat->setAmbient (osg::Material::FRONT_AND_BACK, osg::Vec4(1, 1, 0, 1.0));
-    mat->setDiffuse (osg::Material::FRONT_AND_BACK, osg::Vec4(1, 1, 0, 1.0));
+    if(selecting) {
+      mat->setAmbient (osg::Material::FRONT_AND_BACK, osg::Vec4(0, 1, 0, 1.0));
+      mat->setDiffuse (osg::Material::FRONT_AND_BACK, osg::Vec4(0, 1, 0, 1.0));
+    }
+    else {
+      mat->setAmbient (osg::Material::FRONT_AND_BACK, osg::Vec4(1, 1, 0, 1.0));
+      mat->setDiffuse (osg::Material::FRONT_AND_BACK, osg::Vec4(1, 1, 0, 1.0));
+    }
     intersectedNode->getOrCreateStateSet()->setAttributeAndModes(mat.get(), osg::StateAttribute::OVERRIDE);
   }
   else {
@@ -319,6 +355,9 @@ void keyCallback(int key, int action) {
   case SGCT_KEY_X:
     wand_start.z() -= 1*gEngine->getDt();
     wand_end.z() -= 1*gEngine->getDt();
+    break;
+  case SGCT_KEY_SPACE:
+    selecting = true;
     break;
   }
 }
