@@ -176,19 +176,19 @@ void myPostSyncPreDrawFun(){
   mViewer->setFrameStamp( mFrameStamp.get() );
   mViewer->advance( curr_time.getVal() ); //update
 
-  bool gaze = false;
+  bool point = false;
   bool crosshair = false;
   //Update position if button is pressed
   if(sharedButton.getSize()) {
     if(sharedButton.getValAt(0)) {
-       //gaze mode
-       gaze = true;
+       //point mode
+       point = true;
     }
     else if(sharedButton.getValAt(1)) {
        //crosshair mode
        crosshair = true;
     }
-    else if(sharedButton.getValAt(1)) {
+    else if(sharedButton.getValAt(2)) {
       //Selection of model
       selecting = true;
     }
@@ -226,15 +226,20 @@ void myPostSyncPreDrawFun(){
     wandLine->setEnd(wand_end);
   }
   if( sharedTransforms.getSize() > HEAD_SENSOR_IDX) {
+    wand_matrix = sharedTransforms.getValAt(WAND_SENSOR_IDX);
+    glm::vec3 wand_position = glm::vec3(wand_matrix*glm::vec4(0,0,0,1));
+    glm::mat3 wand_orientation = glm::mat3(wand_matrix);
+
     head_matrix = sharedTransforms.getValAt(HEAD_SENSOR_IDX);
     glm::vec3 head_position = glm::vec3(head_matrix*glm::vec4(0,0,0,1));
-    if(gaze) {
-      glm::vec3 newPosition = head_position + glm::mat3(head_matrix) * glm::vec3(0,0,-1);
+    float speedFactor = 1;
+    if(point) {
+      glm::vec3 newPosition = head_position + (glm::mat3(head_matrix) * glm::vec3(0,0,-1)*speedFactor);
       mSceneTrans->postMult(osg::Matrix::translate(
             -osg::Vec3(newPosition.x, newPosition.y, newPosition.z)));
     }
     else if (crosshair) {
-      glm::vec3 newPosition = head_position;//-wand_position;
+      glm::vec3 newPosition = head_position + normalize(head_position-wand_position)*speedFactor;
       mSceneTrans->postMult(osg::Matrix::translate(
             -osg::Vec3(newPosition.x, newPosition.y, newPosition.z)));
     }
@@ -356,8 +361,14 @@ void keyCallback(int key, int action) {
     wand_start.z() -= 1*gEngine->getDt();
     wand_end.z() -= 1*gEngine->getDt();
     break;
-  case SGCT_KEY_SPACE:
-    selecting = true;
+  case SGCT_KEY_J:
+    sharedButton.setValAt(0, true); //Point mode
+    break;
+  case SGCT_KEY_K:
+    sharedButton.setValAt(1, true); //crosshair mode
+    break;
+  case SGCT_KEY_L:
+    sharedButton.setValAt(2, true); //selecting mode
     break;
   }
 }
