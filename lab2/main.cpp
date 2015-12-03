@@ -48,6 +48,7 @@ osg::Vec3d wand_end(0,0,0);
 glm::mat4 wand_matrix;
 glm::mat4 head_matrix;
 glm::vec3 wand_startPos;
+glm::mat4 wand_startMat;
 
 bool selecting;
 bool moving;
@@ -248,9 +249,9 @@ void myPostSyncPreDrawFun(){
     head_matrix = sharedTransforms.getValAt(HEAD_SENSOR_IDX);
     glm::vec3 head_position = glm::vec3(head_matrix*glm::vec4(0,0,0,1));
 	float speedFactor = 0.1*gEngine->getDt();
-	speedFactor = (length(wand_startPos - wand_position) < 0.1 ? 0 : length(wand_startPos - wand_position)/50);
+	speedFactor = (	length(wand_startPos - wand_position) < 0.1 ? 0 : length(wand_startPos - wand_position)/50);
 	//if we pull the control towards us it should go backwards
-	int direction = (length(wand_startPos - head_position) > length(wand_position - head_position) ? -1 : 1;
+	int direction = (	length(wand_startPos - head_position) > length(wand_position - head_position) ) ? -1 : 1;
 	speedFactor *= direction;
     if(point) {
 		glm::vec3 translation = (glm::mat3(wand_matrix) * glm::vec3(0, 0, -1)*speedFactor);
@@ -262,6 +263,10 @@ void myPostSyncPreDrawFun(){
       mSceneTrans->postMult(osg::Matrix::translate(
 		  osg::Vec3(translation.x, translation.y, translation.z)));
     }
+	if (!selecting) {
+		// save wand matrix for manipulation
+		wand_startMat = wand_matrix;
+	}
   }
   //traverse if there are any tasks to do
   if (!mViewer->done()){
@@ -297,6 +302,13 @@ void calculateIntersections() {
     if(selecting) {
       mat->setAmbient (osg::Material::FRONT_AND_BACK, osg::Vec4(0, 1, 0, 1.0));
       mat->setDiffuse (osg::Material::FRONT_AND_BACK, osg::Vec4(0, 1, 0, 1.0));
+
+	  glm::mat4 diff = glm::inverse(wand_startMat)*wand_matrix;
+	  diff = wand_matrix;
+	  
+	  osg::ref_ptr < osg::MatrixTransform > parent = intersectedNode->getParent(0)->asTransform()->asMatrixTransform();
+
+	  parent->setMatrix(osg::Matrix(glm::value_ptr(diff))*parent->getInverseMatrix());
     }
     else {
       mat->setAmbient (osg::Material::FRONT_AND_BACK, osg::Vec4(1, 1, 0, 1.0));
