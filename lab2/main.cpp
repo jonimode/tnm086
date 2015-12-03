@@ -24,6 +24,7 @@ osg::ref_ptr<osg::Geometry> linesGeom;
 osg::ref_ptr<osgUtil::LineSegmentIntersector> wandLine;
 osg::ref_ptr<osg::Node> mCessnaModel;
 osg::ref_ptr<osg::Node> mModel;
+osg::ref_ptr<osg::Node> intersectedNode;
 
 //-----------------------
 // function declarations
@@ -51,6 +52,7 @@ glm::vec3 wand_startPos;
 glm::mat4 wand_startMat;
 
 bool selecting;
+bool intersecting;
 bool moving;
 //store each device's transform 4x4 matrix in a shared vector
 sgct::SharedDouble curr_time(0.0);
@@ -146,6 +148,7 @@ void myPreSyncFun(){
                 << devicePtr->getEulerAngles().y << ", "
                 << devicePtr->getEulerAngles().z << std::endl;
         index++;
+
       }
 
       if( devicePtr->hasButtons() ){
@@ -166,7 +169,9 @@ void myPreSyncFun(){
       }
       message << std::endl;
 
-	  message << "scene position:" << std::endl;
+    glm::mat4 pos = devicePtr->getWorldTransform();
+
+    message << "scene position:" << std::endl;
 	  message << mSceneTrans->getMatrix().getTrans().x() << " ";
 	  message << mSceneTrans->getMatrix().getTrans().y() << " ";
 	  message << mSceneTrans->getMatrix().getTrans().z() << std::endl;
@@ -204,7 +209,7 @@ void myPostSyncPreDrawFun(){
       selecting = true;
     }
     else {
-      selecting = false;
+//      selecting = false;
 	  moving = false;
     }
   }
@@ -263,11 +268,11 @@ void myPostSyncPreDrawFun(){
       mSceneTrans->postMult(osg::Matrix::translate(
 		  osg::Vec3(translation.x, translation.y, translation.z)));
     }
+  }
 	if (!selecting) {
 		// save wand matrix for manipulation
 		wand_startMat = wand_matrix;
 	}
-  }
   //traverse if there are any tasks to do
   if (!mViewer->done()){
     mViewer->eventTraversal();
@@ -280,13 +285,11 @@ void calculateIntersections() {
   osgUtil::IntersectionVisitor visitor;
   visitor.setIntersector(wandLine);
   mRootNode->accept(visitor);
-
-  if(wandLine->containsIntersections()) {
+  if(!intersectedNode && wandLine->containsIntersections()) {
     osgUtil::LineSegmentIntersector::Intersection intersectionInfo = wandLine->getFirstIntersection();
     osg::NodePath nodePath = intersectionInfo.nodePath;
 
-    osg::ref_ptr<osg::Node> intersectedNode;
-
+    intersecting = true;
     for (osg::NodePath::iterator it = nodePath.begin() ; it != nodePath.end(); ++it) {
       if((*it) == mCessnaModel || (*it) == mModel) {
         intersectedNode = (*it);
@@ -297,28 +300,29 @@ void calculateIntersections() {
 
     if(!mat) {
       mat = new osg::Material();
-      sgct::MessageHandler::instance()->print("No Material!\n");
     }
-    if(selecting) {
-      mat->setAmbient (osg::Material::FRONT_AND_BACK, osg::Vec4(0, 1, 0, 1.0));
-      mat->setDiffuse (osg::Material::FRONT_AND_BACK, osg::Vec4(0, 1, 0, 1.0));
+    mat->setAmbient (osg::Material::FRONT_AND_BACK, osg::Vec4(1, 1, 0, 1.0));
+    mat->setDiffuse (osg::Material::FRONT_AND_BACK, osg::Vec4(1, 1, 0, 1.0));
 
-	  glm::mat4 diff = glm::inverse(wand_startMat)*wand_matrix;
-	  diff = wand_matrix;
-	  
-	  osg::ref_ptr < osg::MatrixTransform > parent = intersectedNode->getParent(0)->asTransform()->asMatrixTransform();
-
-	  parent->setMatrix(osg::Matrix(glm::value_ptr(diff))*parent->getInverseMatrix());
-    }
-    else {
-      mat->setAmbient (osg::Material::FRONT_AND_BACK, osg::Vec4(1, 1, 0, 1.0));
-      mat->setDiffuse (osg::Material::FRONT_AND_BACK, osg::Vec4(1, 1, 0, 1.0));
-    }
     intersectedNode->getOrCreateStateSet()->setAttributeAndModes(mat.get(), osg::StateAttribute::OVERRIDE);
   }
-  else {
+  else if(selecting && intersectedNode) {
+    osg::ref_ptr<osg::Material> mat = (osg::Material*)intersectedNode->getOrCreateStateSet()->getAttribute(osg::StateAttribute::MATERIAL);
+    mat->setAmbient (osg::Material::FRONT_AND_BACK, osg::Vec4(0, 1, 0, 1.0));
+    mat->setDiffuse (osg::Material::FRONT_AND_BACK, osg::Vec4(0, 1, 0, 1.0));
+    intersectedNode->getOrCreateStateSet()->setAttributeAndModes(mat.get(), osg::StateAttribute::OVERRIDE);
+	  glm::mat4 diff = wand_startMat;
+    glm::mat4 diffInv = inverse(wand_matrix);
+
+	  osg::ref_ptr < osg::MatrixTransform > parent = intersectedNode->getParent(0)->asTransform()->asMatrixTransform();
+
+	  parent->postMult(osg::Matrix(glm::value_ptr(inverse(diff*diffInv))));
+    wand_startMat = wand_matrix;
+  }
+  else if(!wandLine->containsIntersections()) {
     mModel->getOrCreateStateSet()->removeAttribute(osg::StateAttribute::MATERIAL);
     mCessnaModel->getOrCreateStateSet()->removeAttribute(osg::StateAttribute::MATERIAL);
+    intersectedNode = NULL;
   }
   wandLine->reset();
 }
@@ -392,16 +396,14 @@ void keyCallback(int key, int action) {
     wand_start.z() -= 1*gEngine->getDt();
     wand_end.z() -= 1*gEngine->getDt();
     break;
-  case SGCT_KEY_J:
-    sharedButton.setValAt(0, true); //Point mode
+  case SGCT_KEY_Y:
+    selecting = true;
     break;
-  case SGCT_KEY_K:
-    sharedButton.setValAt(1, true); //crosshair mode
-    break;
-  case SGCT_KEY_L:
-    sharedButton.setValAt(2, true); //selecting mode
+  case SGCT_KEY_U:
+    selecting = false;
     break;
   }
+
 }
 
 void initOSG(){
@@ -512,7 +514,7 @@ void createOSGScene(){
     mModelTrans->postMult(osg::Matrix::translate( -tmpVec ) );
 
     // scale model to a manageable size
-    double scale = 0.1 / bb.radius();
+    double scale = 0.2 / bb.radius();
     mModelTrans->postMult(osg::Matrix::scale( scale, scale, scale ));
 
     sgct::MessageHandler::instance()->print("Model bounding sphere center:\tx=%f\ty=%f\tz=%f\n", tmpVec[0], tmpVec[1], tmpVec[2] );
