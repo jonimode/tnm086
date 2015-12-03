@@ -52,6 +52,7 @@ glm::vec3 wand_startPos;
 glm::mat4 wand_startMat;
 
 bool selecting;
+bool scaling;
 bool intersecting;
 bool moving;
 //store each device's transform 4x4 matrix in a shared vector
@@ -98,6 +99,7 @@ void myInitOGLFun(){
 
   glEnable(GL_DEPTH_TEST);
   selecting = false;
+  scaling = false;
   //only store the tracking data on the master node
   if( !gEngine->isMaster() ) return;
 
@@ -208,8 +210,11 @@ void myPostSyncPreDrawFun(){
       //Selection of model
       selecting = true;
     }
+    else if(sharedButton.getValAt(3)) {
+      //scaling of model
+      scaling = true;
+    }
     else {
-//      selecting = false;
 	  moving = false;
     }
   }
@@ -311,12 +316,23 @@ void calculateIntersections() {
     mat->setAmbient (osg::Material::FRONT_AND_BACK, osg::Vec4(0, 1, 0, 1.0));
     mat->setDiffuse (osg::Material::FRONT_AND_BACK, osg::Vec4(0, 1, 0, 1.0));
     intersectedNode->getOrCreateStateSet()->setAttributeAndModes(mat.get(), osg::StateAttribute::OVERRIDE);
-	  glm::mat4 diff = wand_startMat;
+
+    glm::mat4 diff = wand_startMat;
     glm::mat4 diffInv = inverse(wand_matrix);
 
 	  osg::ref_ptr < osg::MatrixTransform > parent = intersectedNode->getParent(0)->asTransform()->asMatrixTransform();
+    if (scaling) {
 
-	  parent->postMult(osg::Matrix(glm::value_ptr(inverse(diff*diffInv))));
+      glm::vec3 wand_start_position = glm::vec3(wand_startMat*glm::vec4(0,0,0,1));
+      glm::vec3 wand_position = glm::vec3(wand_matrix*glm::vec4(0,0,0,1));
+      glm::vec3 direction = wand_start_position - wand_position;
+      float scale = 1-(wand_start_position.z-wand_position.z);
+      parent->preMult(osg::Matrix::scale( scale, scale, scale));
+    }
+    else {
+	    parent->postMult(osg::Matrix(glm::value_ptr(inverse(diff*diffInv))));
+    }
+
     wand_startMat = wand_matrix;
   }
   else if(!wandLine->containsIntersections()) {
@@ -401,6 +417,12 @@ void keyCallback(int key, int action) {
     break;
   case SGCT_KEY_U:
     selecting = false;
+    break;
+  case SGCT_KEY_H:
+    scaling = true;
+    break;
+  case SGCT_KEY_J:
+    scaling = false;
     break;
   }
 
