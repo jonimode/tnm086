@@ -1,0 +1,118 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+Copyright 2013, Karljohan Lundin Palmerius
+This is a stubb for laborations on multi-modal display
+systems in the VR laboratory. It will disable the X3D
+navigation to allow for viewpoint calibration and tracking,
+and load libraries commonly used in the VR laboratory.
+-->
+<Group>
+
+  <PythonScript url="urn:candy:python/CorrectViewpoint.py"/>
+
+  <PythonScript url="urn:candy:python/AutoLoadSO.py"/>
+
+  <PythonScript url="urn:candy:python/AutoLoadSO.py">
+    <MetadataString
+        name="library" value="vhtk" containerField="references"/>
+  </PythonScript>
+
+  <PythonScript DEF="MFtoSF1" url="urn:candy:python/MFtoSFBool.py"/>
+  <PythonScript DEF="MFtoSF2" url="urn:candy:python/MFtoSFBool.py"/>
+
+  <BooleanFilter DEF="baseBoolFilt" />
+  <BooleanFilter DEF="legBoolFilt" />
+
+  <Viewpoint position="0 0 1" fieldOfView="0.5"/>
+  <SMViewpoint position="0 0 1" screenLowerLeft="-.960 -.540 0" screenUpperRight=".960 .540 0"/>
+  <SMViewpoint position="0.1 0 .9" screenLowerLeft="-.960 -.540 0" screenUpperRight=".960 .540 0"/>
+  <SMViewpoint position=".2 0 .8" screenLowerLeft="-.960 -.540 0" screenUpperRight=".960 .540 0"/>
+  <SMViewpoint position=".3 0 .7" screenLowerLeft="-.960 -.540 0" screenUpperRight=".960 .540 0"/>
+  <SMViewpoint position=".4 0 .6" screenLowerLeft="-.960 -.540 0" screenUpperRight=".960 .540 0"/>
+  <SMViewpoint position=".3 0.05 .3" screenLowerLeft="-.960 -.540 0" screenUpperRight=".960 .540 0"/>
+
+  <Viewpoint position="1 0.1 1" orientation="0 1 0 0.8" fieldOfView="0.5"/>
+  <SMViewpoint position="1.02 0.1 0.98" orientation="0 1 0 1.57" screenLowerLeft="0 -.09 .6" screenUpperRight=".6 .29 0"/>
+  <SMViewpoint position="0.98 0.1 1.02" orientation="0 1 0 1.57" screenLowerLeft="0 -.09 .6" screenUpperRight=".6 .29 0"/>
+
+  <VRSound location="0 0 0" spatialize="true">
+    <EchoSoundEffect delay="5" spread="5" />
+    <AudioClip DEF="SNAP" url="fine.wav" startTime="0"/>
+  </VRSound>
+  <TimeTrigger DEF="TIT1" set_boolean="" />
+
+  <VRSound location="0 0 0" spatialize="true">
+    <AudioClip DEF="LOL" url="fin2.wav" startTime="0"/>
+  </VRSound>
+  <TimeTrigger DEF="TIT2" set_boolean="" />
+
+  <Transform scale="0.4 0.4 0.4" rotation= "0.257 -0.950 -0.181 0.175">
+    <Group DEF="CHAIR">
+      <Shape DEF="BASE">
+  <Appearance><FrictionalSurface stiffness="500" damping="2" useRelativeValues="false" /><Material diffuseColor="0.61 0.34 0.067"/></Appearance>
+  <Box DEF="BASE_BOX" size="0.4 0.05 0.4" isTouched=""/>
+      </Shape>
+      <Transform translation="0 0.15 -0.175">
+  <Shape DEF="backVertical">
+    <Appearance><FrictionalSurface stiffness="500" damping="2" useRelativeValues="false"/><Material diffuseColor="0.61 0.34 0.067"/></Appearance>
+    <Box size="0.04 0.3 0.04"/>
+  </Shape>
+  <Transform translation="-0.18 0 0">
+    <Shape USE="backVertical" />
+  </Transform>
+  <Transform translation="0.18 0 0">
+    <Shape USE="backVertical" />
+  </Transform>
+  <Transform translation="0.09 0 0">
+    <Shape USE="backVertical" />
+  </Transform>
+  <Transform translation="-0.09 0 0">
+    <Shape USE="backVertical" />
+  </Transform>
+  <Transform translation="0 0.17 0">
+    <Shape DEF="backHorizontal">
+      <Appearance><FrictionalSurface stiffness="400" damping="2" useRelativeValues="false"/><Material diffuseColor="0.61 0.34 0.067"/></Appearance>
+      <Box size="0.4 0.04 0.04" />
+    </Shape>
+  </Transform>
+      </Transform>
+      <!-- Legs      -->
+      <Transform translation="0 -0.15 0">
+  <Transform translation="0.175 0 0.175">
+    <Shape DEF="LEG">
+      <Appearance><FrictionalSurface stiffness="100" damping="2" useRelativeValues="false"/><Material diffuseColor="0.61 0.34 0.067"/></Appearance>
+      <Box DEF="LEG_BOX" size="0.05 0.3 0.05" isTouched=""/>
+    </Shape>
+  </Transform>
+  <Transform translation="0.175 0 -0.175">
+    <Shape USE="LEG" />
+  </Transform>
+  <Transform translation="-0.175 0 0.175">
+    <Shape USE="LEG" />
+  </Transform>
+  <Transform translation="-0.175 0 -0.175">
+    <Shape USE="LEG" />
+  </Transform>
+      </Transform>
+    </Group>
+  </Transform>
+
+    <Transform scale="0.4 0.4 0.4" translation="0.2 0 0.1" rotation= "0.257 -0.950 -0.181 1.175">
+    <Group USE="CHAIR" />
+    </Transform>
+
+    <Transform scale="0.4 0.4 0.4" translation="-0.2 0 -0.1" rotation= "0 0.9396926207859083 0 -0.642">
+    <Group USE="CHAIR" />
+    </Transform>
+
+    <ROUTE fromNode="BASE_BOX" fromField="isTouched" toNode="MFtoSF1" toField="value" />
+    <ROUTE fromNode="MFtoSF1" fromField="value" toNode="baseBoolFilt" toField="set_boolean" />
+    <ROUT fromNode="baseBoolFilt" fromField="inputTrue" toNode="TIT1" toField="set_boolean">
+    <ROUTE fromNode="TIT1" fromField="triggerTime" toNode="SNAP" toField="startTime" />
+
+    <ROUTE fromNode="LEG_BOX" fromField="isTouched" toNode="MFtoSF2" toField="value" />
+    <ROUTE fromNode="MFtoSF2" fromField="value" toNode="TIT2" toField="set_boolean" />
+    <ROUTE fromNode="TIT2" fromField="triggerTime" toNode="LOL" toField="startTime" />
+
+  </Group>
+
