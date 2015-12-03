@@ -47,7 +47,10 @@ osg::Vec3d wand_start(0,-1,0);
 osg::Vec3d wand_end(0,0,0);
 glm::mat4 wand_matrix;
 glm::mat4 head_matrix;
+glm::vec3 wand_startPos;
+
 bool selecting;
+bool moving;
 //store each device's transform 4x4 matrix in a shared vector
 sgct::SharedDouble curr_time(0.0);
 sgct::SharedVector<glm::mat4> sharedTransforms;
@@ -161,6 +164,11 @@ void myPreSyncFun(){
         }
       }
       message << std::endl;
+
+	  message << "scene position:" << std::endl;
+	  message << mSceneTrans->getMatrix().getTrans().x() << " ";
+	  message << mSceneTrans->getMatrix().getTrans().y() << " ";
+	  message << mSceneTrans->getMatrix().getTrans().z() << std::endl;
     }
   }
 
@@ -183,10 +191,12 @@ void myPostSyncPreDrawFun(){
     if(sharedButton.getValAt(0)) {
        //point mode
        point = true;
+	   moving = true;
     }
     else if(sharedButton.getValAt(1)) {
        //crosshair mode
        crosshair = true;
+	   moving = true;
     }
     else if(sharedButton.getValAt(2)) {
       //Selection of model
@@ -194,6 +204,7 @@ void myPostSyncPreDrawFun(){
     }
     else {
       selecting = false;
+	  moving = false;
     }
   }
   // Draw wand in OSG
@@ -225,23 +236,31 @@ void myPostSyncPreDrawFun(){
     wandLine->setStart(wand_start);
     wandLine->setEnd(wand_end);
   }
+  //movement - only if we have a head to move ;)
   if( sharedTransforms.getSize() > HEAD_SENSOR_IDX) {
+	  if (!moving) {
+		  wand_startPos = glm::vec3(wand_matrix*glm::vec4(0, 0, 0, 1));
+	  }
     wand_matrix = sharedTransforms.getValAt(WAND_SENSOR_IDX);
     glm::vec3 wand_position = glm::vec3(wand_matrix*glm::vec4(0,0,0,1));
     glm::mat3 wand_orientation = glm::mat3(wand_matrix);
 
     head_matrix = sharedTransforms.getValAt(HEAD_SENSOR_IDX);
     glm::vec3 head_position = glm::vec3(head_matrix*glm::vec4(0,0,0,1));
-    float speedFactor = 1;
+	float speedFactor = 0.1*gEngine->getDt();
+	speedFactor = (length(wand_startPos - wand_position) < 0.1 ? 0 : length(wand_startPos - wand_position)/50);
+	//if we pull the control towards us it should go backwards
+	int direction = (length(wand_startPos - head_position) > length(wand_position - head_position) ? -1 : 1;
+	speedFactor *= direction;
     if(point) {
-      glm::vec3 newPosition = head_position + (glm::mat3(head_matrix) * glm::vec3(0,0,-1)*speedFactor);
+		glm::vec3 translation = (glm::mat3(wand_matrix) * glm::vec3(0, 0, -1)*speedFactor);
       mSceneTrans->postMult(osg::Matrix::translate(
-            -osg::Vec3(newPosition.x, newPosition.y, newPosition.z)));
+		  -osg::Vec3(translation.x, translation.y, translation.z)));
     }
     else if (crosshair) {
-      glm::vec3 newPosition = head_position + normalize(head_position-wand_position)*speedFactor;
+		glm::vec3 translation = normalize(head_position - wand_position)*speedFactor;
       mSceneTrans->postMult(osg::Matrix::translate(
-            -osg::Vec3(newPosition.x, newPosition.y, newPosition.z)));
+		  osg::Vec3(translation.x, translation.y, translation.z)));
     }
   }
   //traverse if there are any tasks to do
