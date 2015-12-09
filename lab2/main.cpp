@@ -16,6 +16,22 @@ sgct::Engine * gEngine;
 
 // OSG stuff
 
+// OSG scene graph
+/*
+
+			root    <- root of scene
+			 |
+			 |------ wand  <- geode for wand
+		     |
+		mSceneTrans <- used to move the world around - in this code user movement is actually the world moving in the opposite direction
+			/ \
+		   /   \	
+ mCessnaTrans   mModelTrans <- transform nodes for the models
+     |				|
+mCessnaModel      mModel   <- model nodes with geometry ata and material attributes
+
+*/
+
 osgViewer::Viewer * mViewer;
 osg::ref_ptr<osg::Group> mRootNode;
 osg::ref_ptr<osg::MatrixTransform> mSceneTrans;
@@ -24,7 +40,7 @@ osg::ref_ptr<osg::Geometry> linesGeom;
 osg::ref_ptr<osgUtil::LineSegmentIntersector> wandLine;
 osg::ref_ptr<osg::Node> mCessnaModel;
 osg::ref_ptr<osg::Node> mModel;
-osg::ref_ptr<osg::Node> intersectedNode;
+osg::ref_ptr<osg::Node> intersectedNode; //
 
 //-----------------------
 // function declarations
@@ -52,7 +68,7 @@ glm::vec3 wand_startPos;
 glm::mat4 wand_startMat;
 
 bool selecting;
-bool scaling;
+int scaling;
 bool intersecting;
 bool moving;
 //store each device's transform 4x4 matrix in a shared vector
@@ -98,8 +114,10 @@ void myInitOGLFun(){
   setupLightSource();
 
   glEnable(GL_DEPTH_TEST);
+  //set intial values for selecting and scaling
   selecting = false;
   scaling = false;
+
   //only store the tracking data on the master node
   if( !gEngine->isMaster() ) return;
 
@@ -170,13 +188,6 @@ void myPreSyncFun(){
         }
       }
       message << std::endl;
-
-    glm::mat4 pos = devicePtr->getWorldTransform();
-
-    message << "scene position:" << std::endl;
-	  message << mSceneTrans->getMatrix().getTrans().x() << " ";
-	  message << mSceneTrans->getMatrix().getTrans().y() << " ";
-	  message << mSceneTrans->getMatrix().getTrans().z() << std::endl;
     }
   }
 
@@ -194,6 +205,7 @@ void myPostSyncPreDrawFun(){
 
   bool point = false;
   bool crosshair = false;
+
   //Update position if button is pressed
   if(sharedButton.getSize()) {
     if(sharedButton.getValAt(0)) {
@@ -209,12 +221,21 @@ void myPostSyncPreDrawFun(){
     else if(sharedButton.getValAt(2)) {
       //Selection of model
       selecting = true;
-    }
-    else if(sharedButton.getValAt(3)) {
-      //scaling of model
-      scaling = true;
+	  if (sharedButton.getValAt(4)) {
+		  //scaling of model
+		  scaling = 1;
+	  }
+	  else if (sharedButton.getValAt(5)) {
+		  //scaling of model
+		  scaling = -1;
+	  }
+	  else {
+		  scaling = 0;
+	  }
     }
     else {
+	  scaling = 0;
+	  selecting = false;
 	  moving = false;
     }
   }
@@ -239,7 +260,7 @@ void myPostSyncPreDrawFun(){
     wandLine->setEnd(wand_end);
   }
   else {
-    //Debug drawing
+    //Debug drawing for wand even if there is no VRPN server
     osg::Vec3Array* vertices = new osg::Vec3Array();
     vertices->push_back(wand_start);
     vertices->push_back(wand_end);
@@ -249,21 +270,30 @@ void myPostSyncPreDrawFun(){
   }
   //movement - only if we have a head to move ;)
   if( sharedTransforms.getSize() > HEAD_SENSOR_IDX) {
-	  if (!moving) {
-		  wand_startPos = glm::vec3(wand_matrix*glm::vec4(0, 0, 0, 1));
-	  }
+	if (!moving) {
+	  //store initial position of wand for deadzone calculation
+	  wand_startPos = glm::vec3(wand_matrix*glm::vec4(0, 0, 0, 1)); 
+	}
+
     wand_matrix = sharedTransforms.getValAt(WAND_SENSOR_IDX);
-    glm::vec3 wand_position = glm::vec3(wand_matrix*glm::vec4(0,0,0,1));
+    
+	glm::vec3 wand_position = glm::vec3(wand_matrix*glm::vec4(0,0,0,1));
     glm::mat3 wand_orientation = glm::mat3(wand_matrix);
 
     head_matrix = sharedTransforms.getValAt(HEAD_SENSOR_IDX);
     glm::vec3 head_position = glm::vec3(head_matrix*glm::vec4(0,0,0,1));
+	
+	//intial static speed factor
 	float speedFactor = 0.1*gEngine->getDt();
+	
+	//user sets speed, deadzone is 10 cm from original position
 	speedFactor = (	length(wand_startPos - wand_position) < 0.1 ? 0 : length(wand_startPos - wand_position)/50);
+	
 	//if we pull the control towards us it should go backwards
 	int direction = (	length(wand_startPos - head_position) > length(wand_position - head_position) ) ? -1 : 1;
 	speedFactor *= direction;
-    if(point) {
+    //Move the world in the opposite direction for the movement effect 
+	if(point) {
 		glm::vec3 translation = (glm::mat3(wand_matrix) * glm::vec3(0, 0, -1)*speedFactor);
       mSceneTrans->postMult(osg::Matrix::translate(
 		  -osg::Vec3(translation.x, translation.y, translation.z)));
@@ -287,11 +317,15 @@ void myPostSyncPreDrawFun(){
 }
 
 void calculateIntersections() {
+  //visit all nodes and look for intersection
   osgUtil::IntersectionVisitor visitor;
   visitor.setIntersector(wandLine);
   mRootNode->accept(visitor);
+
   if(!intersectedNode && wandLine->containsIntersections()) {
-    osgUtil::LineSegmentIntersector::Intersection intersectionInfo = wandLine->getFirstIntersection();
+	//get intersection, store it and change the color of the object to a highlight yellow color
+	//we store it
+	osgUtil::LineSegmentIntersector::Intersection intersectionInfo = wandLine->getFirstIntersection();
     osg::NodePath nodePath = intersectionInfo.nodePath;
 
     intersecting = true;
@@ -312,21 +346,27 @@ void calculateIntersections() {
     intersectedNode->getOrCreateStateSet()->setAttributeAndModes(mat.get(), osg::StateAttribute::OVERRIDE);
   }
   else if(selecting && intersectedNode) {
+	//selection button pressed - make the object green and make it follow the wand
     osg::ref_ptr<osg::Material> mat = (osg::Material*)intersectedNode->getOrCreateStateSet()->getAttribute(osg::StateAttribute::MATERIAL);
     mat->setAmbient (osg::Material::FRONT_AND_BACK, osg::Vec4(0, 1, 0, 1.0));
     mat->setDiffuse (osg::Material::FRONT_AND_BACK, osg::Vec4(0, 1, 0, 1.0));
     intersectedNode->getOrCreateStateSet()->setAttributeAndModes(mat.get(), osg::StateAttribute::OVERRIDE);
 
+	//use the difference between the starting wand orientation and current position to determine the transformation
     glm::mat4 diff = wand_startMat;
     glm::mat4 diffInv = inverse(wand_matrix);
 
 	  osg::ref_ptr < osg::MatrixTransform > parent = intersectedNode->getParent(0)->asTransform()->asMatrixTransform();
-    if (scaling) {
+    if (scaling != 0) {
+	  
+		//Original scaling idea but sucks in the VR-lab due to lag
+		//glm::vec3 wand_start_position = glm::vec3(wand_startMat*glm::vec4(0, 0, 0, 1));
+		//glm::vec3 wand_position = glm::vec3(wand_matrix*glm::vec4(0, 0, 0, 1));
+		//glm::vec3 direction = wand_start_position - wand_position;
+		//float scale = 1 - (wand_start_position.z - wand_position.z);
 
-      glm::vec3 wand_start_position = glm::vec3(wand_startMat*glm::vec4(0,0,0,1));
-      glm::vec3 wand_position = glm::vec3(wand_matrix*glm::vec4(0,0,0,1));
-      glm::vec3 direction = wand_start_position - wand_position;
-      float scale = 1-(wand_start_position.z-wand_position.z);
+	  float scaleVal = 0.05;
+      float scale = 1-(scaleVal*scaling);
       parent->preMult(osg::Matrix::scale( scale, scale, scale));
     }
     else {
@@ -412,6 +452,7 @@ void keyCallback(int key, int action) {
     wand_start.z() -= 1*gEngine->getDt();
     wand_end.z() -= 1*gEngine->getDt();
     break;
+	//buttons for debugging selecting and scaling
   case SGCT_KEY_Y:
     selecting = true;
     break;
@@ -514,11 +555,12 @@ void createOSGScene(){
   mSceneTrans->addChild( mCessnaTrans.get() );
 
   sgct::MessageHandler::instance()->print("Loading model airplane.ive'...\n");
+  sgct::MessageHandler::instance()->print("and cessna.org'...\n");
   mModel = osgDB::readNodeFile("airplane.ive");
   mCessnaModel = osgDB::readNodeFile("cessna.osg");
 
   if ( mModel.valid() && mCessnaModel.valid()){
-    sgct::MessageHandler::instance()->print("Model loaded successfully!\n");
+    sgct::MessageHandler::instance()->print("Models loaded successfully!\n");
 
     mModelTrans->addChild(mModel.get());
     mCessnaTrans->addChild(mCessnaModel.get());
@@ -539,10 +581,10 @@ void createOSGScene(){
     double scale = 0.2 / bb.radius();
     mModelTrans->postMult(osg::Matrix::scale( scale, scale, scale ));
 
-    sgct::MessageHandler::instance()->print("Model bounding sphere center:\tx=%f\ty=%f\tz=%f\n", tmpVec[0], tmpVec[1], tmpVec[2] );
-    sgct::MessageHandler::instance()->print("Model bounding sphere radius:\t%f\n", bb.radius() );
+    sgct::MessageHandler::instance()->print("airplane bounding sphere center:\tx=%f\ty=%f\tz=%f\n", tmpVec[0], tmpVec[1], tmpVec[2] );
+    sgct::MessageHandler::instance()->print("airplane bounding sphere radius:\t%f\n", bb.radius() );
 
-    //same as above for cessna
+    //same as above for the cessna
     mCessnaModel->accept( cbv );
 
     tmpVec = bb.center();
@@ -554,9 +596,11 @@ void createOSGScene(){
     scale = 0.1 / bb.radius();
     mCessnaTrans->postMult(osg::Matrix::scale( scale, scale, scale ));
 
+
+	sgct::MessageHandler::instance()->print("cessna bounding sphere center:\tx=%f\ty=%f\tz=%f\n", tmpVec[0], tmpVec[1], tmpVec[2]);
+	sgct::MessageHandler::instance()->print("cessna bounding sphere radius:\t%f\n", bb.radius());
     //disable face culling
     mCessnaModel->getOrCreateStateSet()->setMode( GL_CULL_FACE,
-
                                             osg::StateAttribute::OFF | osg::StateAttribute::OVERRIDE);
     mModel->getOrCreateStateSet()->setMode( GL_CULL_FACE,
                                             osg::StateAttribute::OFF | osg::StateAttribute::OVERRIDE);
